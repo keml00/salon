@@ -103,8 +103,25 @@ if __name__ == "__main__":
     import webbrowser
     import threading
 
-    print("\n✈️  Telegram Salon Messenger")
-    print("   Open: http://localhost:5000\n")
+    print("\n" + "=" * 50)
+    print("  ✈️  Telegram Salon Messenger")
+    print("=" * 50)
+
+    # Auth Telegram BEFORE starting Flask
+    if telegram_client.API_ID and telegram_client.API_HASH:
+        print("\n🔐 Подключение к Telegram...")
+        print("   Если потребуется код — введите его здесь:\n")
+        try:
+            run_async(telegram_client.get_client())
+            print("\n✅ Telegram подключён!\n")
+        except Exception as e:
+            print(f"\n⚠️  Ошибка подключения: {e}")
+            print("   Приложение запустится, но отправка не будет работать.\n")
+    else:
+        print("\n⚠️  TELEGRAM_API_ID / API_HASH не заполнены в .env")
+        print("   Заполните и перезапустите.\n")
+
+    print(f"   Открываю: http://localhost:5000\n")
 
     # Auto-open browser
     threading.Timer(1.5, lambda: webbrowser.open("http://localhost:5000")).start()
