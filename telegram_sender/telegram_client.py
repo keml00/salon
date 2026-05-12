@@ -23,7 +23,7 @@ PHONE = os.getenv("TELEGRAM_PHONE", "")
 SESSION_NAME = "salon_sender"
 
 # Global client instance
-_client: TelegramClient | None = None
+_client = None  # type: TelegramClient | None
 
 
 async def get_client() -> TelegramClient:
