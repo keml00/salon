@@ -1,83 +1,66 @@
 """
 Telegram client module.
-Uses Telethon to send messages by phone number or username.
+Uses subprocess to send messages — avoids all asyncio/event loop conflicts.
+Each send spawns a separate Python process with its own event loop.
 """
 
 import os
-import asyncio
-from telethon import TelegramClient
-from telethon.errors import (
-    PhoneNumberInvalidError,
-    UsernameNotOccupiedError,
-    UserPrivacyRestrictedError,
-    PeerFloodError,
-)
+import subprocess
+import sys
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
 
-API_ID = int(os.getenv("TELEGRAM_API_ID", "0"))
+try:
+    API_ID = int(os.getenv("TELEGRAM_API_ID", "0"))
+except ValueError:
+    API_ID = 0
 API_HASH = os.getenv("TELEGRAM_API_HASH", "")
 PHONE = os.getenv("TELEGRAM_PHONE", "")
 
 SESSION_NAME = "salon_sender"
 
-# Global client instance
-_client: TelegramClient | None = None
+# Path to the send script
+_SEND_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_send_worker.py")
 
 
-async def get_client() -> TelegramClient:
-    """Get or create Telegram client."""
-    global _client
-    if _client is None or not _client.is_connected():
-        _client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
-        await _client.start(phone=PHONE)
-    return _client
+def init_client():
+    """Initialize client — run auth script to create/verify session."""
+    result = subprocess.run(
+        [sys.executable, _SEND_SCRIPT, "--auth"],
+        capture_output=True, text=True, timeout=120,
+        # Pass through stdin for code input
+        stdin=sys.stdin
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "Auth failed")
 
 
-async def send_message(recipient: str, text: str) -> dict:
+def send_message(recipient: str, text: str) -> dict:
     """
-    Send message to recipient.
-    recipient: phone number (+7...) or @username
+    Send message via subprocess (no event loop issues).
     Returns: {"success": bool, "error": str|None}
     """
-    # Validation
     if not text.strip():
         return {"success": False, "error": "Сообщение пустое"}
-
     if not recipient.strip():
         return {"success": False, "error": "Получатель не указан"}
 
     try:
-        client = await get_client()
-
-        # Resolve recipient
-        if recipient.startswith("@"):
-            entity = await client.get_entity(recipient)
-        elif recipient.startswith("+"):
-            entity = await client.get_entity(recipient)
-        else:
-            # Try as phone with +
-            entity = await client.get_entity("+" + recipient)
-
-        await client.send_message(entity, text)
-        return {"success": True, "error": None}
-
-    except PhoneNumberInvalidError:
-        return {"success": False, "error": "Неверный номер телефона"}
-    except UsernameNotOccupiedError:
-        return {"success": False, "error": "Username не найден"}
-    except UserPrivacyRestrictedError:
-        return {"success": False, "error": "Пользователь ограничил приём сообщений"}
-    except PeerFloodError:
-        return {"success": False, "error": "Telegram ограничил отправку (спам-лимит)"}
-    except Exception as e:
-        return {"success": False, "error": f"Ошибка: {str(e)}"}
+        result = subprocess.run(
+            [sys.executable, _SEND_SCRIPT, "--send", recipient, text],
+            capture_output=True, text=True, timeout=30
+        )
+        data = json.loads(result.stdout)
+        return data
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Таймаут отправки (30 сек)"}
+    except (json.JSONDecodeError, Exception) as e:
+        stderr = result.stderr.strip() if 'result' in dir() else str(e)
+        return {"success": False, "error": f"Ошибка: {stderr or str(e)}"}
 
 
-async def disconnect():
-    """Disconnect client."""
-    global _client
-    if _client and _client.is_connected():
-        await _client.disconnect()
-        _client = None
+def disconnect():
+    """No-op for subprocess approach."""
+    pass
