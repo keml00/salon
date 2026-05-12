@@ -7,6 +7,7 @@ Run: python app.py -> open http://localhost:5000
 """
 
 import asyncio
+import threading
 from flask import Flask, render_template, request, jsonify, send_file
 import telegram_client
 import ai_formatter
@@ -15,15 +16,16 @@ import tempfile
 
 app = Flask(__name__)
 
+# Single persistent event loop for Telethon
+_loop = asyncio.new_event_loop()
+_loop_thread = threading.Thread(target=_loop.run_forever, daemon=True)
+_loop_thread.start()
 
-def run_async(coro):
-    """Run async coroutine in a new event loop."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+
+def run_in_loop(coro):
+    """Run coroutine in the persistent event loop."""
+    future = asyncio.run_coroutine_threadsafe(coro, _loop)
+    return future.result(timeout=30)
 
 
 # ============================================================
@@ -47,7 +49,7 @@ def send():
     if not text:
         return jsonify({"success": False, "error": "Введите сообщение"})
 
-    result = run_async(telegram_client.send_message(recipient, text))
+    result = run_in_loop(telegram_client.send_message(recipient, text))
 
     if result["success"]:
         history.save_message(recipient, text, "sent")
@@ -101,27 +103,26 @@ def export(fmt):
 # ============================================================
 if __name__ == "__main__":
     import webbrowser
-    import threading
 
     print("\n" + "=" * 50)
-    print("  ✈️  Telegram Salon Messenger")
+    print("  Telegram Salon Messenger")
     print("=" * 50)
 
     # Auth Telegram BEFORE starting Flask
     if telegram_client.API_ID and telegram_client.API_HASH:
-        print("\n🔐 Подключение к Telegram...")
-        print("   Если потребуется код — введите его здесь:\n")
+        print("\n  Podklyuchenie k Telegram...")
+        print("  Esli potrebuetsya kod — vvedite ego zdes:\n")
         try:
-            run_async(telegram_client.get_client())
-            print("\n✅ Telegram подключён!\n")
+            run_in_loop(telegram_client.get_client())
+            print("\n  Telegram podklyuchyon!\n")
         except Exception as e:
-            print(f"\n⚠️  Ошибка подключения: {e}")
-            print("   Приложение запустится, но отправка не будет работать.\n")
+            print(f"\n  Oshibka podklyucheniya: {e}")
+            print("  Prilozhenie zapustitsya, no otpravka ne budet rabotat.\n")
     else:
-        print("\n⚠️  TELEGRAM_API_ID / API_HASH не заполнены в .env")
-        print("   Заполните и перезапустите.\n")
+        print("\n  TELEGRAM_API_ID / API_HASH ne zapolneny v .env")
+        print("  Zapolnite i perezapustite.\n")
 
-    print(f"   Открываю: http://localhost:5000\n")
+    print(f"  Otkryvayu: http://localhost:5000\n")
 
     # Auto-open browser
     threading.Timer(1.5, lambda: webbrowser.open("http://localhost:5000")).start()
