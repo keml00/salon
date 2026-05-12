@@ -6,7 +6,6 @@ Web interface for sending Telegram messages without saving contacts.
 Run: python app.py -> open http://localhost:5000
 """
 
-import asyncio
 import threading
 from flask import Flask, render_template, request, jsonify, send_file
 import telegram_client
@@ -15,17 +14,6 @@ import history
 import tempfile
 
 app = Flask(__name__)
-
-# Single persistent event loop for Telethon
-_loop = asyncio.new_event_loop()
-_loop_thread = threading.Thread(target=_loop.run_forever, daemon=True)
-_loop_thread.start()
-
-
-def run_in_loop(coro):
-    """Run coroutine in the persistent event loop."""
-    future = asyncio.run_coroutine_threadsafe(coro, _loop)
-    return future.result(timeout=30)
 
 
 # ============================================================
@@ -49,7 +37,7 @@ def send():
     if not text:
         return jsonify({"success": False, "error": "Введите сообщение"})
 
-    result = run_in_loop(telegram_client.send_message(recipient, text))
+    result = telegram_client.send_message(recipient, text)
 
     if result["success"]:
         history.save_message(recipient, text, "sent")
@@ -110,19 +98,19 @@ if __name__ == "__main__":
 
     # Auth Telegram BEFORE starting Flask
     if telegram_client.API_ID and telegram_client.API_HASH:
-        print("\n  Podklyuchenie k Telegram...")
-        print("  Esli potrebuetsya kod — vvedite ego zdes:\n")
+        print("\n  Connecting to Telegram...")
+        print("  If code is required — enter it here:\n")
         try:
-            run_in_loop(telegram_client.get_client())
-            print("\n  Telegram podklyuchyon!\n")
+            telegram_client.init_client()
+            print("\n  Telegram connected!\n")
         except Exception as e:
-            print(f"\n  Oshibka podklyucheniya: {e}")
-            print("  Prilozhenie zapustitsya, no otpravka ne budet rabotat.\n")
+            print(f"\n  Connection error: {e}")
+            print("  App will start but sending won't work.\n")
     else:
-        print("\n  TELEGRAM_API_ID / API_HASH ne zapolneny v .env")
-        print("  Zapolnite i perezapustite.\n")
+        print("\n  TELEGRAM_API_ID / API_HASH not set in .env")
+        print("  Fill them and restart.\n")
 
-    print(f"  Otkryvayu: http://localhost:5000\n")
+    print("  Opening: http://localhost:5000\n")
 
     # Auto-open browser
     threading.Timer(1.5, lambda: webbrowser.open("http://localhost:5000")).start()

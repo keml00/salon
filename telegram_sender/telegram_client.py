@@ -1,10 +1,12 @@
 """
 Telegram client module.
 Uses Telethon to send messages by phone number or username.
+Single persistent event loop approach.
 """
 
 import os
 import asyncio
+import threading
 from telethon import TelegramClient
 from telethon.errors import (
     PhoneNumberInvalidError,
@@ -25,35 +27,42 @@ PHONE = os.getenv("TELEGRAM_PHONE", "")
 
 SESSION_NAME = "salon_sender"
 
-# Global client instance
+# Persistent event loop running in background thread
+_loop = asyncio.new_event_loop()
+_thread = threading.Thread(target=_loop.run_forever, daemon=True)
+_thread.start()
+
+# Global client — created and used ONLY in _loop
 _client = None
 
 
-async def get_client():
-    """Get or create Telegram client."""
+async def _get_client():
+    """Get or create Telegram client (runs in _loop)."""
     global _client
-    if _client is None or not _client.is_connected():
-        _client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
+    if _client is None:
+        _client = TelegramClient(SESSION_NAME, API_ID, API_HASH, loop=_loop)
         await _client.start(phone=PHONE)
+    elif not _client.is_connected():
+        await _client.connect()
     return _client
 
 
-async def send_message(recipient: str, text: str) -> dict:
-    """
-    Send message to recipient.
-    recipient: phone number (+7...) or @username
-    Returns: {"success": bool, "error": str|None}
-    """
+def init_client():
+    """Initialize client (call from main thread, blocks until done)."""
+    future = asyncio.run_coroutine_threadsafe(_get_client(), _loop)
+    return future.result(timeout=60)
+
+
+async def _send(recipient: str, text: str) -> dict:
+    """Internal send (runs in _loop)."""
     if not text.strip():
         return {"success": False, "error": "Сообщение пустое"}
-
     if not recipient.strip():
         return {"success": False, "error": "Получатель не указан"}
 
     try:
-        client = await get_client()
+        client = await _get_client()
 
-        # Resolve recipient
         if recipient.startswith("@"):
             entity = await client.get_entity(recipient)
         elif recipient.startswith("+"):
@@ -76,9 +85,15 @@ async def send_message(recipient: str, text: str) -> dict:
         return {"success": False, "error": f"Ошибка: {str(e)}"}
 
 
-async def disconnect():
+def send_message(recipient: str, text: str) -> dict:
+    """Send message (call from any thread, synchronous)."""
+    future = asyncio.run_coroutine_threadsafe(_send(recipient, text), _loop)
+    return future.result(timeout=30)
+
+
+def disconnect():
     """Disconnect client."""
     global _client
-    if _client and _client.is_connected():
-        await _client.disconnect()
+    if _client:
+        asyncio.run_coroutine_threadsafe(_client.disconnect(), _loop).result(timeout=10)
         _client = None
