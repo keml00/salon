@@ -3,14 +3,15 @@ Telegram Salon Messenger — Web GUI (Flask)
 by keml00, Telegram
 
 Web interface for sending Telegram messages without saving contacts.
+Run: python app.py -> open http://localhost:5000
 """
 
 import asyncio
-import threading
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 import telegram_client
 import ai_formatter
 import history
+import tempfile
 
 app = Flask(__name__)
 
@@ -57,7 +58,7 @@ def send():
 
 
 @app.route("/format", methods=["POST"])
-def format_text():
+def format_text_route():
     """AI format text endpoint."""
     data = request.json
     text = data.get("text", "").strip()
@@ -65,7 +66,7 @@ def format_text():
     if not text:
         return jsonify({"success": False, "error": "Нечего форматировать"})
 
-    result = run_async(ai_formatter.format_text(text))
+    result = ai_formatter.format_text(text)
 
     if result.startswith("["):
         return jsonify({"success": False, "error": result})
@@ -83,10 +84,6 @@ def get_history():
 @app.route("/export/<fmt>")
 def export(fmt):
     """Export history as CSV or JSON."""
-    import tempfile
-    import os
-    from flask import send_file
-
     if fmt == "csv":
         path = tempfile.mktemp(suffix=".csv")
         history.export_csv(path)
@@ -103,6 +100,13 @@ def export(fmt):
 # ENTRY POINT
 # ============================================================
 if __name__ == "__main__":
+    import webbrowser
+    import threading
+
     print("\n✈️  Telegram Salon Messenger")
     print("   Open: http://localhost:5000\n")
-    app.run(host="0.0.0.0", port=5000, debug=False)
+
+    # Auto-open browser
+    threading.Timer(1.5, lambda: webbrowser.open("http://localhost:5000")).start()
+
+    app.run(host="127.0.0.1", port=5000, debug=False)

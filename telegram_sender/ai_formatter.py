@@ -1,10 +1,13 @@
 """
 AI text formatter module.
-Uses free LLM APIs (OpenRouter / Ollama) to improve message text.
+Uses free LLM APIs (OpenRouter) to improve message text.
+Uses urllib (built-in) — no C compilation needed on Windows.
 """
 
-import aiohttp
+import json
 import os
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,7 +23,7 @@ SYSTEM_PROMPT = (
 )
 
 
-async def format_text(text: str) -> str:
+def format_text(text: str) -> str:
     """Send text to AI API and return formatted version."""
     if not AI_API_KEY:
         return "[ERROR] AI_API_KEY not set in .env"
@@ -29,22 +32,24 @@ async def format_text(text: str) -> str:
         "Authorization": f"Bearer {AI_API_KEY}",
         "Content-Type": "application/json",
     }
-    payload = {
+    payload = json.dumps({
         "model": AI_MODEL,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": text},
         ],
         "max_tokens": 500,
-    }
+    }).encode("utf-8")
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(AI_API_URL, json=payload, headers=headers) as resp:
-                if resp.status != 200:
-                    error = await resp.text()
-                    return f"[AI ERROR {resp.status}] {error[:200]}"
-                data = await resp.json()
-                return data["choices"][0]["message"]["content"].strip()
+        req = Request(AI_API_URL, data=payload, headers=headers, method="POST")
+        with urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data["choices"][0]["message"]["content"].strip()
+    except HTTPError as e:
+        body = e.read().decode("utf-8", errors="ignore")[:200]
+        return f"[AI ERROR {e.code}] {body}"
+    except URLError as e:
+        return f"[AI ERROR] {str(e.reason)}"
     except Exception as e:
         return f"[AI ERROR] {str(e)}"

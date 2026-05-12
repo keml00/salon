@@ -23,10 +23,10 @@ PHONE = os.getenv("TELEGRAM_PHONE", "")
 SESSION_NAME = "salon_sender"
 
 # Global client instance
-_client = None  # type: TelegramClient | None
+_client = None
 
 
-async def get_client() -> TelegramClient:
+async def get_client():
     """Get or create Telegram client."""
     global _client
     if _client is None or not _client.is_connected():
@@ -41,7 +41,6 @@ async def send_message(recipient: str, text: str) -> dict:
     recipient: phone number (+7...) or @username
     Returns: {"success": bool, "error": str|None}
     """
-    # Validation
     if not text.strip():
         return {"success": False, "error": "Сообщение пустое"}
 
@@ -57,7 +56,6 @@ async def send_message(recipient: str, text: str) -> dict:
         elif recipient.startswith("+"):
             entity = await client.get_entity(recipient)
         else:
-            # Try as phone with +
             entity = await client.get_entity("+" + recipient)
 
         await client.send_message(entity, text)
