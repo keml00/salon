@@ -96,10 +96,10 @@ if __name__ == "__main__":
     print("  Telegram Salon Messenger")
     print("=" * 50)
 
-    # Auth Telegram BEFORE starting Flask
+    # Auth Telegram BEFORE starting Flask (uses telethon.sync)
     if telegram_client.API_ID and telegram_client.API_HASH:
         print("\n  Connecting to Telegram...")
-        print("  If code is required — enter it here:\n")
+        print("  If code is needed — enter it below:\n")
         try:
             telegram_client.init_client()
             print("\n  Telegram connected!\n")
