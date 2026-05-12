@@ -16,7 +16,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_ID = int(os.getenv("TELEGRAM_API_ID", "0"))
+_raw_id = os.getenv("TELEGRAM_API_ID", "0")
+API_ID = int(_raw_id) if _raw_id.isdigit() else 0
 API_HASH = os.getenv("TELEGRAM_API_HASH", "")
 PHONE = os.getenv("TELEGRAM_PHONE", "")
 
